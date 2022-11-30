@@ -1,5 +1,4 @@
 import streamlit as st
-from streamlit_image_comparison import image_comparison
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
