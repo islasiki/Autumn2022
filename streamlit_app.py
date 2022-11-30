@@ -4,7 +4,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 
-wget https://pjreddie.com/media/files/yolov3.weight
 
 def detect_objects(our_image):
     st.set_option('deprecation.showPyplotGlobalUse', False)
