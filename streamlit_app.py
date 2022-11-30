@@ -8,7 +8,7 @@ from PIL import Image
 def detect_objects(our_image):
     st.set_option('deprecation.showPyplotGlobalUse', False)
 
-    col1, col2 = st.beta_columns(2)
+    col1, col2 = st.columns(2)
 
     col1.subheader("Original Image")
     st.text("")
