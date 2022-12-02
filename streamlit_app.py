@@ -81,7 +81,7 @@ def main():
         "Explanation class: The class you would like to explain output with respect to.",
         explanation_classes,
     )
-    my_expander = st.beta_expander(
+    my_expander = st.expander(
         "Click here for description of models and their tasks"
     )
     with my_expander:
