@@ -9,7 +9,7 @@ import streamlit as st
 from PIL import Image
 from streamlit import components
 from streamlit import caching
-from streamlit.caching import clear_cache
+from caching import clear_cache
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from transformers_interpret import SequenceClassificationExplainer
 
