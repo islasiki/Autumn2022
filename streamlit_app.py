@@ -7,8 +7,8 @@ import pandas as pd
 import psutil
 import streamlit as st
 from PIL import Image
-from streamlit import components
-from streamlit import caching
+from st import components
+from st import caching
 from streamlit.caching import clear_cache
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from transformers_interpret import SequenceClassificationExplainer
