@@ -1,123 +1,127 @@
+import asyncio
+import gc
+import logging
+import os
+
+import pandas as pd
+import psutil
 import streamlit as st
-import cv2
-import numpy as np
-import matplotlib.pyplot as plt
 from PIL import Image
+from streamlit import components
+from streamlit.caching import clear_cache
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from transformers_interpret import SequenceClassificationExplainer
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+logging.basicConfig(
+    format="%(asctime)s : %(levelname)s : %(message)s", level=logging.INFO
+)
 
 
-def detect_objects(our_image):
-    st.set_option('deprecation.showPyplotGlobalUse', False)
-
-    col1, col2 = st.columns(2)
-
-    col1.subheader("Original Image")
-    st.text("")
-    plt.figure(figsize = (15,15))
-    plt.imshow(our_image)
-    col1.pyplot(use_column_width=True)
-
-    # YOLO ALGORITHM
-    net = cv2.dnn.readNet("yolov3.weights", "yolov3.cfg")
-
-    classes = []
-    with open("coco.names", "r") as f:
-        classes = [line.strip() for line in f.readlines()]
-    layer_names = net.getLayerNames()
-    output_layers = [layer_names[i[0]-1] for i in net.getUnconnectedOutLayers()]
-
-    colors = np.random.uniform(0,255,size=(len(classes), 3))   
+def print_memory_usage():
+    logging.info(f"RAM memory % used: {psutil.virtual_memory()[2]}")
 
 
-    # LOAD THE IMAGE
-    new_img = np.array(our_image.convert('RGB'))
-    img = cv2.cvtColor(new_img,1)
-    height,width,channels = img.shape
+@st.cache(allow_output_mutation=True, suppress_st_warning=True, max_entries=1)
+def load_model(model_name):
+    return (
+        AutoModelForSequenceClassification.from_pretrained(model_name),
+        AutoTokenizer.from_pretrained(model_name),
+    )
 
 
-    # DETECTING OBJECTS (CONVERTING INTO BLOB)
-    blob = cv2.dnn.blobFromImage(img, 0.00392, (416,416), (0,0,0), True, crop = False)   #(image, scalefactor, size, mean(mean subtraction from each layer), swapRB(Blue to red), crop)
+def main():
 
-    net.setInput(blob)
-    outs = net.forward(output_layers)
+    st.title("Transformers Interpet Demo App")
 
-    class_ids = []
-    confidences = []
-    boxes =[]
+    image = Image.open("./images/tight@1920x_transparent.png")
+    st.sidebar.image(image, use_column_width=True)
+    st.sidebar.markdown(
+        "Check out the package on [Github](https://github.com/cdpierse/transformers-interpret)"
+    )
+    st.info(
+        "Due to limited resources only low memory models are available. Run this [app locally](https://github.com/cdpierse/transformers-interpret-streamlit) to run the full selection of available models. "
+    )
 
-    # SHOWING INFORMATION CONTAINED IN 'outs' VARIABLE ON THE SCREEN
-    for out in outs:
-        for detection in out:
-            scores = detection[5:]
-            class_id = np.argmax(scores)  
-            confidence = scores[class_id] 
-            if confidence > 0.5:   
-                # OBJECT DETECTED
-                #Get the coordinates of object: center,width,height  
-                center_x = int(detection[0] * width)
-                center_y = int(detection[1] * height)
-                w = int(detection[2] * width)  #width is the original width of image
-                h = int(detection[3] * height) #height is the original height of the image
-
-                # RECTANGLE COORDINATES
-                x = int(center_x - w /2)   #Top-Left x
-                y = int(center_y - h/2)   #Top-left y
-
-                #To organize the objects in array so that we can extract them later
-                boxes.append([x,y,w,h])
-                confidences.append(float(confidence))
-                class_ids.append(class_id)
-
-    score_threshold = st.sidebar.slider("Confidence Threshold", 0.00,1.00,0.5,0.01)
-    nms_threshold = st.sidebar.slider("NMS Threshold", 0.00, 1.00, 0.4, 0.01)
-
-    indexes = cv2.dnn.NMSBoxes(boxes, confidences,score_threshold,nms_threshold)      
-    print(indexes)
-
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    items = []
-    for i in range(len(boxes)):
-        if i in indexes:
-            x,y,w,h = boxes[i]
-            #To get the name of object
-            label = str.upper((classes[class_ids[i]]))   
-            color = colors[i]
-            cv2.rectangle(img,(x,y),(x+w,y+h),color,3)     
-            items.append(label)
-
-
-    st.text("")
-    col2.subheader("Object-Detected Image")
-    st.text("")
-    plt.figure(figsize = (15,15))
-    plt.imshow(img)
-    col2.pyplot(use_column_width=True)
-
-    if len(indexes)>1:
-        st.success("Found {} Objects - {}".format(len(indexes),[item for item in set(items)]))
+    # uncomment the options below to test out the app with a variety of classification models.
+    models = {
+        # "textattack/distilbert-base-uncased-rotten-tomatoes": "",
+        # "textattack/bert-base-uncased-rotten-tomatoes": "",
+        # "textattack/roberta-base-rotten-tomatoes": "",
+        # "mrm8488/bert-mini-finetuned-age_news-classification": "BERT-Mini finetuned on AG News dataset. Predicts news class (sports/tech/business/world) of text.",
+        # "nateraw/bert-base-uncased-ag-news": "BERT finetuned on AG News dataset. Predicts news class (sports/tech/business/world) of text.",
+        "distilbert-base-uncased-finetuned-sst-2-english": "DistilBERT model finetuned on SST-2 sentiment analysis task. Predicts positive/negative sentiment.",
+        # "ProsusAI/finbert": "BERT model finetuned to predict sentiment of financial text. Finetuned on Financial PhraseBank data. Predicts positive/negative/neutral.",
+        "sampathkethineedi/industry-classification": "DistilBERT Model to classify a business description into one of 62 industry tags.",
+        "MoritzLaurer/policy-distilbert-7d": "DistilBERT model finetuned to classify text into one of seven political categories.",
+        # # "MoritzLaurer/covid-policy-roberta-21": "(Under active development ) RoBERTA model finetuned to identify COVID policy measure classes ",
+        # "mrm8488/bert-tiny-finetuned-sms-spam-detection": "Tiny bert model finetuned for spam detection. 0 == not spam, 1 == spam",
+    }
+    model_name = st.sidebar.selectbox(
+        "Choose a classification model", list(models.keys())
+    )
+    model, tokenizer = load_model(model_name)
+    if model_name.startswith("textattack/"):
+        model.config.id2label = {0: "NEGATIVE (0) ", 1: "POSITIVE (1)"}
+    model.eval()
+    cls_explainer = SequenceClassificationExplainer(model=model, tokenizer=tokenizer)
+    if cls_explainer.accepts_position_ids:
+        emb_type_name = st.sidebar.selectbox(
+            "Choose embedding type for attribution.", ["word", "position"]
+        )
+        if emb_type_name == "word":
+            emb_type_num = 0
+        if emb_type_name == "position":
+            emb_type_num = 1
     else:
-        st.success("Found {} Object - {}".format(len(indexes),[item for item in set(items)]))
+        emb_type_num = 0
+
+    explanation_classes = ["predicted"] + list(model.config.label2id.keys())
+    explanation_class_choice = st.sidebar.selectbox(
+        "Explanation class: The class you would like to explain output with respect to.",
+        explanation_classes,
+    )
+    my_expander = st.beta_expander(
+        "Click here for description of models and their tasks"
+    )
+    with my_expander:
+        st.json(models)
+
+    # st.info("Max char limit of 350 (memory management)")
+    text = st.text_area(
+        "Enter text to be interpreted",
+        "I like you, I love you",
+        height=400,
+        max_chars=850,
+    )
+
+    if st.button("Interpret Text"):
+        print_memory_usage()
+
+        st.text("Output")
+        with st.spinner("Interpreting your text (This may take some time)"):
+            if explanation_class_choice != "predicted":
+                word_attributions = cls_explainer(
+                    text,
+                    class_name=explanation_class_choice,
+                    embedding_type=emb_type_num,
+                    internal_batch_size=2,
+                )
+            else:
+                word_attributions = cls_explainer(
+                    text, embedding_type=emb_type_num, internal_batch_size=2
+                )
+
+        if word_attributions:
+            word_attributions_expander = st.beta_expander(
+                "Click here for raw word attributions"
+            )
+            with word_attributions_expander:
+                st.json(word_attributions)
+            components.v1.html(
+                cls_explainer.visualize()._repr_html_(), scrolling=True, height=350
+            )
 
 
-def object_main():
-    """OBJECT DETECTION APP"""
-
-    st.title("Object Detection")
-    st.write("Object detection is a central algorithm in computer vision. The algorithm implemented below is YOLO (You Only Look Once), a state-of-the-art algorithm trained to identify thousands of objects types. It extracts objects from images and identifies them using OpenCV and Yolo. This task involves Deep Neural Networks(DNN), yolo trained model, yolo configuration and a dataset to detect objects.")
-
-    choice = st.radio("", ("Show Demo", "Browse an Image"))
-    st.write()
-
-    if choice == "Browse an Image":
-        st.set_option('deprecation.showfileUploaderEncoding', False)
-        image_file = st.file_uploader("Upload Image", type=['jpg','png','jpeg'])
-
-        if image_file is not None:
-            our_image = Image.open(image_file)  
-            detect_objects(our_image)
-
-    elif choice == "Show Demo":
-        our_image = Image.open("images/person.jpg")
-        detect_objects(our_image)
-
-if __name__ == '__main__':
-    object_main()
+if __name__ == "__main__":
+    main()
