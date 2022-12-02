@@ -4,3 +4,4 @@ transformers_interpret
 pandas
 transformers
 psutil
+clear_cache
